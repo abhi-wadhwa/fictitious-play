@@ -1,0 +1,107 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{definition}{Definition}
+
+\title{Fictitious Play: Convergence, Cycling, and Smooth Variants}
+\author{Abhi Wadhwa}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+These notes cover fictitious play, one of the oldest learning dynamics in game theory. I walk through the basic algorithm, why it converges in zero-sum and potential games, why it spectacularly fails in Shapley's 3$\times$3 counterexample, and how smooth (logit) fictitious play patches things up---at a cost. The goal is to build intuition for when and why learning in games works, not just state the theorems.
+\end{abstract}
+
+\section{The Setup}
+
+Consider a two-player normal-form game with payoff matrices $A \in \mathbb{R}^{m \times n}$ (row player) and $B \in \mathbb{R}^{m \times n}$ (column player). The question we're interested in is: if two players repeatedly play this game and try to learn a good strategy, do they converge to a Nash equilibrium?
+
+Fictitious play, introduced by Brown \cite{brown1951} and analyzed by Robinson \cite{robinson1951}, is maybe the simplest possible answer. The idea is almost embarrassingly natural: each player keeps track of what the opponent has done so far, forms an empirical frequency, and best-responds to it.
+
+More precisely, let $n_i^t(a)$ denote the number of times player $i$ has played action $a$ through round $t$. The empirical strategy is just the obvious thing:
+\[
+\sigma_i^t(a) = \frac{n_i^t(a)}{t}.
+\]
+At round $t+1$, player $i$ plays a best response to $\sigma_{-i}^t$. For the row player, this means picking
+\[
+i_{t+1} \in \arg\max_i \; (A \, \sigma_2^t)_i,
+\]
+and symmetrically for the column player. That's it. No fancy optimization, no gradient steps, no regret minimization---just ``what has my opponent been doing, and what's the best reply to that?''
+
+The first thing to notice is that this is a \textbf{deterministic} process (given initial conditions and tie-breaking rules). The players aren't randomizing; they're playing pure best responses to a running average. The \emph{empirical strategies} $\sigma_i^t$ are the objects we care about---those are the things that might or might not converge to a Nash equilibrium.
+
+\section{When It Works: Zero-Sum Games}
+
+The headline result is Robinson's theorem, and I think it's genuinely surprising how clean it is.
+
+\begin{theorem}[Robinson, 1951]
+In every finite two-player zero-sum game (i.e., $B = -A$), the empirical strategies of fictitious play converge to the set of minimax (Nash) equilibria.
+\end{theorem}
+
+The convergence rate turns out to be $O(1/t)$ in the distance to the Nash equilibrium set, which is tight for some games. This is not fast by modern standards, but the fact that it works at all is pretty remarkable.
+
+\textbf{The key intuition} for why this works in zero-sum games is tied to the minimax theorem. In a zero-sum game, the Nash equilibrium is the minimax solution, and there's a single ``value'' of the game $v = \max_x \min_y x^T A y$. What fictitious play effectively does is generate a sequence of strategies whose \emph{average} payoffs are squeezed between upper and lower bounds that both converge to $v$. The best-response step ensures the row player's average payoff can't fall too far below what the column player's empirical strategy would give to a best-responder, and vice versa. After playing with this for a while, you realize the zero-sum structure is doing a lot of heavy lifting---it's giving you a single value to converge to, and the best-response dynamics naturally push both sides toward it.
+
+This also works in a few other game classes. Monderer and Shapley \cite{monderer1996} proved convergence in \textbf{potential games}---games where there exists a potential function $\Phi$ such that unilateral deviations change $\Phi$ by the same amount as the deviating player's payoff. The argument is essentially that the potential increases along the fictitious play path (not monotonically at every step, but on average). Convergence also holds in $2 \times 2$ games (all of them, regardless of structure) and in supermodular games, where the strategic complementarities push players toward coordinated behavior.
+
+\section{When It Fails: Shapley's Counterexample}
+
+Now here's where it gets interesting. Shapley \cite{shapley1964} constructed a $3 \times 3$ game where fictitious play \emph{never} converges:
+\[
+A = \begin{pmatrix} 0 & 0 & 1 \\ 1 & 0 & 0 \\ 0 & 1 & 0 \end{pmatrix}, \qquad B = \begin{pmatrix} 0 & 1 & 0 \\ 0 & 0 & 1 \\ 1 & 0 & 0 \end{pmatrix}.
+\]
+
+The unique Nash equilibrium here is $(\frac{1}{3}, \frac{1}{3}, \frac{1}{3})$ for both players. But if you run fictitious play, the empirical strategies trace out a spiraling path on the boundary of the simplex---the famous ``Shapley triangle.'' They orbit around the equilibrium but never converge to it.
+
+I spent a while trying to figure out why this happens, and \textbf{the trick is in the asymmetry of the payoff structure}. Notice that $A$ and $B$ are cyclic permutation matrices (with zeros on the diagonal). Each player's best response cycles through their actions in a pattern that's always ``one step behind'' the opponent's empirical frequency. The best-response map creates a rotational dynamic on the simplex, and the empirical frequencies get caught in this rotation.
+
+The orbit doesn't spiral inward because the attraction toward the equilibrium and the rotational force are perfectly balanced. It's a bit like a frictionless orbit in physics---the ``gravitational pull'' toward equilibrium is exactly offset by the ``angular momentum'' of the cycling dynamics. The empirical strategies do get closer to $(\frac{1}{3}, \frac{1}{3}, \frac{1}{3})$ in some average sense, but the time-averaged distance doesn't go to zero.
+
+This tells us something fundamental: \textbf{best-response dynamics are too ``aggressive.''} The hard argmax creates discontinuous jumps that can sustain periodic orbits. This motivates the smooth variant.
+
+\section{Exploitability}
+
+Before getting to smooth FP, let me define the convergence metric we actually care about. The \textbf{exploitability} of a strategy profile $(\sigma_1, \sigma_2)$ is:
+\[
+\text{exploit}(\sigma_1, \sigma_2) = \left[\max_i e_i^T A \sigma_2 - \sigma_1^T A \sigma_2 \right] + \left[\max_j \sigma_1^T B e_j - \sigma_1^T B \sigma_2\right].
+\]
+This measures the total ``regret''---how much each player could gain by deviating to their best response. A profile is a Nash equilibrium if and only if its exploitability is zero. In converging games, you see exploitability decay like $O(1/t)$; in Shapley's game, it oscillates and stays bounded away from zero.
+
+\section{Smooth Fictitious Play}
+
+The fix for cycling is elegant: replace the hard best response with a \textbf{softmax} (logit) best response. Instead of jumping to $\arg\max$, player $i$ plays each action with probability proportional to the exponentiated payoff:
+\[
+\sigma_i^{BR}(a) = \frac{\exp\left( (A \, \sigma_{-i}^t)_a / \tau \right)}{\sum_{a'} \exp\left( (A \, \sigma_{-i}^t)_{a'} / \tau \right)},
+\]
+where $\tau > 0$ is a temperature parameter. When $\tau \to 0$, this recovers the hard best response (classical FP). When $\tau$ is large, the response is nearly uniform---the player barely reacts to the opponent's history.
+
+The idea is that the softmax smooths out the discontinuities in the best-response map. Instead of jumping from one pure action to another, the player gradually shifts probability mass. This eliminates the rotational dynamics that cause cycling.
+
+\textbf{There's a catch, though.} With a fixed temperature $\tau > 0$, smooth FP converges, but it converges to a \textbf{quantal response equilibrium} (QRE), not to a Nash equilibrium. A QRE is a fixed point of the logit best-response map---players are ``approximately'' best-responding, but with noise proportional to $\tau$. As $\tau \to 0$, the QRE approaches a Nash equilibrium, but for any fixed $\tau > 0$, you're not quite at NE.
+
+The practical solution is to use a \textbf{cooling schedule}: start with a large $\tau$ (lots of smoothing, broad convergence) and decrease it over time, e.g., $\tau(t) = c/t$ for some constant $c$. With an appropriate cooling schedule, smooth FP can converge to an actual Nash equilibrium even in games where classical FP cycles. The cooling rate matters---cool too fast and you get stuck in cycles; cool too slowly and convergence is painfully slow.
+
+I find the smooth FP story satisfying because it shows that the failure of classical FP isn't really about the \emph{idea} of best-responding to empirical frequencies. The idea is sound. The problem is purely in the hard argmax, and softening it just enough is sufficient to fix the convergence issues.
+
+\section{Summary}
+
+Fictitious play is a beautifully simple algorithm with a surprisingly complicated convergence landscape. It works perfectly in zero-sum games (Robinson's theorem), fails dramatically in Shapley's $3 \times 3$ game, and can be rescued by smoothing the best response. The takeaway is that \textbf{learning dynamics in games are sensitive to the structure of the game and the ``aggressiveness'' of the learning rule}. Hard best responses create dynamics that are too jerky to converge in general; smooth best responses trade off exact rationality for stability. Whether this tradeoff is worth it depends on what you're trying to achieve.
+
+\begin{thebibliography}{9}
+\bibitem{brown1951} G.~W. Brown, ``Iterative solution of games by fictitious play,'' in \textit{Activity Analysis of Production and Allocation}, Wiley, 1951.
+
+\bibitem{robinson1951} J.~Robinson, ``An iterative method of solving a game,'' \textit{Annals of Mathematics}, vol.~54, no.~2, pp.~296--301, 1951.
+
+\bibitem{shapley1964} L.~S. Shapley, ``Some topics in two-person games,'' in \textit{Advances in Game Theory}, Princeton University Press, pp.~1--28, 1964.
+
+\bibitem{monderer1996} D.~Monderer and L.~S. Shapley, ``Potential games,'' \textit{Games and Economic Behavior}, vol.~14, no.~1, pp.~124--143, 1996.
+
+\bibitem{fudenberg1998} D.~Fudenberg and D.~K. Levine, \textit{The Theory of Learning in Games}, MIT Press, 1998.
+\end{thebibliography}
+
+\end{document}
